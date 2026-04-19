@@ -1,0 +1,805 @@
+html
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Profesyonel E-Kitap Okuyucu v2</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Fira+Code&display=swap" rel="stylesheet">
+
+    <!-- Gerekli Kütüphaneler -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        sepia: { bg: '#f4ecd8', text: '#5b4636', panel: '#e8dfc7' },
+                        night: { bg: '#0f172a', text: '#cbd5e1', panel: '#1e293b' }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Lora', 'serif'],
+                        mono: ['Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Temel Geçişler ve Temalar */
+        body { transition: background-color 0.4s ease, color 0.4s ease; }
+        
+        /* Tema: Light */
+        body.theme-light { background-color: #f8fafc; color: #334155; }
+        body.theme-light .glass-panel { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border-color: rgba(226, 232, 240, 0.8); }
+        
+        /* Tema: Dark (Gece) */
+        body.theme-dark { background-color: #0f172a; color: #cbd5e1; }
+        body.theme-dark .glass-panel { background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(12px); border-color: rgba(51, 65, 85, 0.8); }
+        
+        /* Tema: Sepia */
+        body.theme-sepia { background-color: #f4ecd8; color: #5b4636; }
+        body.theme-sepia .glass-panel { background: rgba(232, 223, 199, 0.85); backdrop-filter: blur(12px); border-color: rgba(214, 204, 178, 0.8); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.5); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(156, 163, 175, 0.8); }
+
+        /* Okuma Alanı (TXT/DOCX) */
+        #scroll-content {
+            padding: 3rem 2rem;
+            max-width: 768px;
+            margin: 0 auto;
+            transition: all 0.3s ease;
+        }
+        #scroll-content p { margin-bottom: 1.5em; text-align: justify; }
+        #scroll-content h1, #scroll-content h2, #scroll-content h3 { font-family: 'Inter', sans-serif; font-weight: 700; margin-top: 2em; margin-bottom: 1em; color: inherit; }
+
+        /* PDF Viewer */
+        #pdf-viewer canvas { margin: 0 auto 1rem auto; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border-radius: 4px; max-width: 100%; height: auto !important; }
+
+        /* Range Slider Stili */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #6366f1; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #cbd5e1; border-radius: 2px; }
+        body.theme-dark input[type=range]::-webkit-slider-runnable-track { background: #475569; }
+
+        /* Animasyonlar */
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .slide-in-left { transform: translateX(0) !important; }
+    </style>
+</head>
+<body class="theme-light h-screen w-screen overflow-hidden flex flex-col font-sans selection:bg-indigo-200 selection:text-indigo-900">
+
+    <!-- Üst Bar (Header) -->
+    <header class="glass-panel border-b px-4 py-3 flex items-center justify-between z-40 transition-all duration-300 absolute top-0 w-full" id="header">
+        <div class="flex items-center gap-4">
+            <!-- İçindekiler Butonu -->
+            <button onclick="toggleSidebar()" class="w-10 h-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center transition" title="İçindekiler">
+                <i class="fa-solid fa-bars-staggered text-lg"></i>
+            </button>
+            <div class="font-bold text-lg hidden sm:block tracking-tight">
+                <span class="text-indigo-500">Okuyucu</span><span class="opacity-80">Pro</span>
+            </div>
+            <!-- Kitap Başlığı -->
+            <div id="book-title" class="text-sm font-medium opacity-70 truncate max-w-[150px] sm:max-w-xs md:max-w-md hidden"></div>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-3">
+            <!-- Dosya Yükleme -->
+            <label for="file-upload" class="cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full text-sm font-medium transition-all shadow-md hover:shadow-lg flex items-center gap-2">
+                <i class="fa-solid fa-plus"></i>
+                <span class="hidden sm:inline">Kitap Aç</span>
+            </label>
+            <input id="file-upload" type="file" class="hidden" accept=".txt,.epub,.pdf,.docx" onchange="handleFileSelect(event)">
+
+            <!-- Tam Ekran Butonu -->
+            <button onclick="toggleFullScreen()" class="w-10 h-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center transition" title="Tam Ekran">
+                <i class="fa-solid fa-expand" id="fullscreen-icon"></i>
+            </button>
+
+            <!-- Ayarlar Butonu -->
+            <button onclick="toggleSettings()" class="w-10 h-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center transition" title="Görünüm Ayarları">
+                <i class="fa-solid fa-font text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- İlerleme Çubuğu (Header altında) -->
+    <div class="h-1 w-full bg-black/5 dark:bg-white/5 absolute top-[64px] z-30 hidden" id="progress-container">
+        <div id="reading-progress" class="h-full bg-indigo-500 transition-all duration-300 w-0"></div>
+    </div>
+
+    <!-- Yan Menü (İçindekiler - TOC) -->
+    <div id="sidebar" class="fixed inset-y-0 left-0 w-72 glass-panel border-r transform -translate-x-full transition-transform duration-300 z-50 flex flex-col shadow-2xl">
+        <div class="p-4 border-b border-black/10 dark:border-white/10 flex justify-between items-center">
+            <h2 class="font-bold text-lg flex items-center gap-2"><i class="fa-solid fa-list-ul text-indigo-500"></i> İçindekiler</h2>
+            <button onclick="toggleSidebar()" class="w-8 h-8 rounded-full hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4">
+            <ul id="toc-list" class="space-y-2 text-sm">
+                <li class="opacity-50 italic text-center py-4">İçindekiler yükleniyor veya bu formatta desteklenmiyor.</li>
+            </ul>
+        </div>
+    </div>
+    <!-- Yan Menü Arka Plan Overlay -->
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 hidden fade-in"></div>
+
+    <!-- Ayarlar Modalı -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 hidden flex items-center justify-center fade-in" onclick="closeSettings(event)">
+        <div class="glass-panel w-full max-w-sm rounded-2xl shadow-2xl p-6 m-4" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-bold text-lg">Okuma Ayarları</h3>
+                <button onclick="toggleSettings()" class="opacity-50 hover:opacity-100"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+
+            <!-- Tema -->
+            <div class="mb-6">
+                <p class="text-sm font-medium mb-3 opacity-70">Tema</p>
+                <div class="grid grid-cols-3 gap-3">
+                    <button onclick="updateSettings('theme', 'light')" class="py-2 rounded-lg bg-[#f8fafc] text-[#334155] border-2 border-transparent hover:border-indigo-500 flex flex-col items-center gap-1 transition" id="btn-theme-light">
+                        <i class="fa-solid fa-sun text-amber-500"></i> <span class="text-xs font-medium">Açık</span>
+                    </button>
+                    <button onclick="updateSettings('theme', 'sepia')" class="py-2 rounded-lg bg-[#f4ecd8] text-[#5b4636] border-2 border-transparent hover:border-indigo-500 flex flex-col items-center gap-1 transition" id="btn-theme-sepia">
+                        <i class="fa-solid fa-mug-hot text-[#8b6b43]"></i> <span class="text-xs font-medium">Sepya</span>
+                    </button>
+                    <button onclick="updateSettings('theme', 'dark')" class="py-2 rounded-lg bg-[#0f172a] text-[#cbd5e1] border-2 border-transparent hover:border-indigo-500 flex flex-col items-center gap-1 transition" id="btn-theme-dark">
+                        <i class="fa-solid fa-moon text-indigo-400"></i> <span class="text-xs font-medium">Koyu</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Yazı Tipi -->
+            <div class="mb-6">
+                <p class="text-sm font-medium mb-3 opacity-70">Yazı Tipi</p>
+                <div class="grid grid-cols-3 gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-lg">
+                    <button onclick="updateSettings('fontFamily', 'serif')" class="py-1 rounded-md text-sm font-serif bg-white dark:bg-gray-800 shadow-sm" id="btn-font-serif">Serif</button>
+                    <button onclick="updateSettings('fontFamily', 'sans')" class="py-1 rounded-md text-sm font-sans opacity-70 hover:opacity-100" id="btn-font-sans">Sans</button>
+                    <button onclick="updateSettings('fontFamily', 'mono')" class="py-1 rounded-md text-sm font-mono opacity-70 hover:opacity-100" id="btn-font-mono">Mono</button>
+                </div>
+            </div>
+
+            <!-- Metin Boyutu -->
+            <div class="mb-6">
+                <div class="flex justify-between text-sm mb-2 opacity-70">
+                    <span>Metin Boyutu</span>
+                    <span id="font-size-val">18px</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-font text-xs opacity-50"></i>
+                    <input type="range" id="fontSizeRange" min="14" max="32" step="2" value="18" oninput="updateSettings('fontSize', this.value)">
+                    <i class="fa-solid fa-font text-lg opacity-50"></i>
+                </div>
+            </div>
+
+            <!-- Satır Aralığı -->
+            <div>
+                <div class="flex justify-between text-sm mb-2 opacity-70">
+                    <span>Satır Aralığı</span>
+                    <span id="line-height-val">1.6</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-align-justify text-sm opacity-50"></i>
+                    <input type="range" id="lineHeightRange" min="1.2" max="2.2" step="0.1" value="1.6" oninput="updateSettings('lineHeight', this.value)">
+                    <i class="fa-solid fa-bars text-sm opacity-50" style="line-height: 2;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ana Okuma Alanı -->
+    <main class="flex-1 relative overflow-hidden flex flex-col pt-[64px]" id="main-area">
+        
+        <!-- Yükleniyor Göstergesi -->
+        <div id="loader" class="absolute inset-0 z-20 flex flex-col items-center justify-center glass-panel hidden">
+            <div class="relative w-16 h-16">
+                <div class="absolute inset-0 border-4 border-indigo-200 rounded-full"></div>
+                <div class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+            </div>
+            <p class="mt-4 font-medium opacity-80" id="loader-text">Kitap Hazırlanıyor...</p>
+        </div>
+
+        <!-- Karşılama Ekranı -->
+        <div id="welcome-screen" class="flex-1 flex flex-col items-center justify-center p-6 text-center h-full">
+            <div class="w-32 h-32 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-3xl flex items-center justify-center text-5xl mb-8 shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-300">
+                <i class="fa-solid fa-book-open-reader"></i>
+            </div>
+            <h2 class="text-3xl font-bold mb-3 tracking-tight">Kütüphanenize Hoş Geldiniz</h2>
+            <p class="opacity-70 max-w-md mb-8 text-lg">Favori kitabınızı sürükleyip bırakın veya dosyalarınızdan seçerek profesyonel okuma deneyimini başlatın.</p>
+            <div class="flex gap-6 text-3xl opacity-40">
+                <i class="fa-regular fa-file-pdf hover:text-red-500 transition-colors cursor-help" title="PDF Desteği"></i>
+                <i class="fa-solid fa-book hover:text-green-500 transition-colors cursor-help" title="EPUB Desteği"></i>
+                <i class="fa-regular fa-file-word hover:text-blue-500 transition-colors cursor-help" title="DOCX Desteği"></i>
+                <i class="fa-regular fa-file-lines hover:text-gray-500 transition-colors cursor-help" title="TXT Desteği"></i>
+            </div>
+        </div>
+
+        <!-- Okuyucu Konteynerleri -->
+        
+        <!-- 1. Kaydırılabilir İçerik (TXT, DOCX için) -->
+        <div id="scroll-viewer" class="hidden flex-1 overflow-y-auto w-full h-full pb-20" onscroll="updateScrollProgress()">
+            <div id="scroll-content"></div>
+        </div>
+
+        <!-- 2. EPUB Okuyucu -->
+        <div id="epub-viewer" class="hidden flex-1 w-full h-full relative"></div>
+
+        <!-- 3. PDF Okuyucu -->
+        <div id="pdf-viewer" class="hidden flex-1 overflow-y-auto w-full h-full flex flex-col items-center p-4 gap-4 pb-20"></div>
+
+    </main>
+
+    <!-- Alt Kontrol Çubuğu (Sadece Sayfalı Formatlar İçin) -->
+    <footer id="bottom-controls" class="glass-panel border-t px-6 py-3 flex items-center justify-between z-40 absolute bottom-0 w-full hidden transform transition-transform duration-300">
+        <button onclick="prevPage()" class="w-12 h-12 rounded-full bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600/20 transition flex items-center justify-center">
+            <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        
+        <div class="text-center flex flex-col">
+            <span class="font-bold text-sm tracking-widest uppercase opacity-50" id="format-badge">EPUB</span>
+            <div class="font-medium flex items-center gap-1" id="page-info">
+                <span id="current-page-display">-</span> <span class="opacity-50">/</span> <span id="total-page-display">-</span>
+            </div>
+        </div>
+
+        <button onclick="nextPage()" class="w-12 h-12 rounded-full bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600/20 transition flex items-center justify-center">
+            <i class="fa-solid fa-arrow-right"></i>
+        </button>
+    </footer>
+
+    <!-- Bildirim (Toast) -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl opacity-0 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2 translate-y-4">
+        <i class="fa-solid fa-circle-info text-indigo-400"></i>
+        <span id="toast-msg"></span>
+    </div>
+
+    <script>
+        // PDF.js Worker
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        // --- Global Durum Yönetimi ---
+        const state = {
+            format: null,
+            theme: 'light',
+            fontSize: 18,
+            fontFamily: 'serif',
+            lineHeight: 1.6,
+            isFullscreen: false
+        };
+
+        // Kitap Objeleri
+        let epubBook = null;
+        let epubRendition = null;
+        let epubLocationsGenerated = false;
+        
+        let pdfDoc = null;
+        let pdfCurrentPageNum = 1;
+
+        // DOM Elementleri Referansları
+        const ui = {
+            welcome: document.getElementById('welcome-screen'),
+            scrollViewer: document.getElementById('scroll-viewer'),
+            scrollContent: document.getElementById('scroll-content'),
+            epubViewer: document.getElementById('epub-viewer'),
+            pdfViewer: document.getElementById('pdf-viewer'),
+            loader: document.getElementById('loader'),
+            loaderText: document.getElementById('loader-text'),
+            bottomControls: document.getElementById('bottom-controls'),
+            progressContainer: document.getElementById('progress-container'),
+            progressBar: document.getElementById('reading-progress'),
+            bookTitle: document.getElementById('book-title'),
+            tocList: document.getElementById('toc-list'),
+            formatBadge: document.getElementById('format-badge'),
+            currentPageDisplay: document.getElementById('current-page-display'),
+            totalPageDisplay: document.getElementById('total-page-display'),
+            sidebar: document.getElementById('sidebar'),
+            sidebarOverlay: document.getElementById('sidebar-overlay'),
+            settingsModal: document.getElementById('settings-modal'),
+            header: document.getElementById('header')
+        };
+
+        // --- Yardımcı & UI Fonksiyonları ---
+        function showToast(message) {
+            const toast = document.getElementById("toast");
+            document.getElementById("toast-msg").textContent = message;
+            toast.classList.remove("opacity-0", "translate-y-4");
+            setTimeout(() => toast.classList.add("opacity-0", "translate-y-4"), 3000);
+        }
+
+        function showLoader(show, text = "Kitap Hazırlanıyor...") {
+            ui.loaderText.textContent = text;
+            ui.loader.classList.toggle('hidden', !show);
+        }
+
+        function toggleSidebar() {
+            const isClosed = ui.sidebar.classList.contains('-translate-x-full');
+            if (isClosed) {
+                ui.sidebar.classList.remove('-translate-x-full');
+                ui.sidebarOverlay.classList.remove('hidden');
+            } else {
+                ui.sidebar.classList.add('-translate-x-full');
+                ui.sidebarOverlay.classList.add('hidden');
+            }
+        }
+
+        function toggleSettings() {
+            ui.settingsModal.classList.toggle('hidden');
+        }
+
+        function closeSettings(e) {
+            if (e.target.id === 'settings-modal') {
+                ui.settingsModal.classList.add('hidden');
+            }
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    showToast(`Tam ekran hatası: ${err.message}`);
+                });
+                state.isFullscreen = true;
+                document.getElementById('fullscreen-icon').classList.replace('fa-expand', 'fa-compress');
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                    state.isFullscreen = false;
+                    document.getElementById('fullscreen-icon').classList.replace('fa-compress', 'fa-expand');
+                }
+            }
+        }
+
+        // Ayarları Güncelleme ve Uygulama
+        function updateSettings(key, value) {
+            state[key] = value;
+            
+            // UI Güncellemeleri
+            if(key === 'theme') {
+                document.body.className = `theme-${value} h-screen w-screen overflow-hidden flex flex-col font-sans selection:bg-indigo-200 selection:text-indigo-900`;
+                ['light', 'sepia', 'dark'].forEach(t => {
+                    document.getElementById(`btn-theme-${t}`).style.borderColor = t === value ? '#6366f1' : 'transparent';
+                });
+            } else if (key === 'fontFamily') {
+                ['serif', 'sans', 'mono'].forEach(f => {
+                    const btn = document.getElementById(`btn-font-${f}`);
+                    if(f === value) {
+                        btn.classList.add('bg-white', 'dark:bg-gray-800', 'shadow-sm');
+                        btn.classList.remove('opacity-70');
+                    } else {
+                        btn.classList.remove('bg-white', 'dark:bg-gray-800', 'shadow-sm');
+                        btn.classList.add('opacity-70');
+                    }
+                });
+            } else if (key === 'fontSize') {
+                document.getElementById('font-size-val').textContent = value + 'px';
+            } else if (key === 'lineHeight') {
+                document.getElementById('line-height-val').textContent = value;
+            }
+
+            applyTypography();
+        }
+
+        function applyTypography() {
+            // TXT ve DOCX için CSS uygula
+            ui.scrollContent.style.fontSize = state.fontSize + 'px';
+            ui.scrollContent.style.lineHeight = state.lineHeight;
+            
+            let fontClass = 'font-serif';
+            if (state.fontFamily === 'sans') fontClass = 'font-sans';
+            if (state.fontFamily === 'mono') fontClass = 'font-mono';
+            
+            ui.scrollContent.className = `${fontClass}`;
+
+            // EPUB İçin
+            if (state.format === 'epub' && epubRendition) {
+                epubRendition.themes.fontSize(state.fontSize + "px");
+                epubRendition.themes.select(state.theme);
+                
+                // Iframe içine özel CSS inject et
+                epubRendition.themes.override('font-family', state.fontFamily === 'serif' ? 'Lora, serif' : (state.fontFamily === 'sans' ? 'Inter, sans-serif' : 'monospace'));
+                epubRendition.themes.override('line-height', state.lineHeight);
+            }
+
+            updateScrollProgress(); // Boyut değişince scroll barı güncelle
+        }
+
+        // Görünümleri Sıfırlama
+        function hideAllViewers() {
+            ui.welcome.classList.add('hidden');
+            ui.scrollViewer.classList.add('hidden');
+            ui.epubViewer.classList.add('hidden');
+            ui.pdfViewer.classList.add('hidden');
+            ui.bottomControls.classList.add('hidden');
+            ui.progressContainer.classList.add('hidden');
+            ui.progressBar.style.width = '0%';
+            ui.bookTitle.classList.remove('hidden');
+            ui.tocList.innerHTML = '<li class="opacity-50 italic text-center py-4">İçindekiler listesi yok.</li>';
+            
+            if (epubBook) { epubBook.destroy(); epubBook = null; ui.epubViewer.innerHTML = ''; epubLocationsGenerated = false; }
+            if (state.format === 'pdf') { ui.pdfViewer.innerHTML = ''; pdfDoc = null; }
+            ui.scrollContent.innerHTML = '';
+        }
+
+        // --- Dosya Okuma İşlemleri ---
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const filename = file.name;
+            const ext = filename.split('.').pop().toLowerCase();
+            
+            ui.bookTitle.textContent = filename.replace(/\.[^/.]+$/, ""); // Uzantıyı gizle
+            hideAllViewers();
+            showLoader(true, "Dosya analiz ediliyor...");
+
+            try {
+                if (ext === 'txt') {
+                    await readTxt(file);
+                } else if (ext === 'docx') {
+                    await readDocx(file);
+                } else if (ext === 'epub') {
+                    await readEpub(file);
+                } else if (ext === 'pdf') {
+                    await readPdf(file);
+                } else {
+                    showToast('Desteklenmeyen dosya formatı!');
+                    showLoader(false);
+                    return;
+                }
+                
+                state.format = ext;
+                ui.formatBadge.textContent = ext;
+                applyTypography();
+                
+                // Format spesifik UI ayarları
+                if (ext === 'epub' || ext === 'pdf') {
+                    ui.bottomControls.classList.remove('hidden');
+                } else {
+                    ui.progressContainer.classList.remove('hidden');
+                }
+                
+                showToast('Kitap başarıyla açıldı.');
+            } catch (error) {
+                console.error("Yükleme hatası:", error);
+                showToast('Dosya okunurken hata oluştu!');
+                ui.welcome.classList.remove('hidden');
+                ui.bookTitle.classList.add('hidden');
+            } finally {
+                showLoader(false);
+                event.target.value = '';
+            }
+        }
+
+        // 1. TXT Okuyucu
+        function readTxt(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    ui.scrollViewer.classList.remove('hidden');
+                    const text = e.target.result;
+                    const paragraphs = text.split(/\r?\n\r?\n/).filter(p => p.trim() !== '');
+                    
+                    paragraphs.forEach(pText => {
+                        const p = document.createElement('p');
+                        p.textContent = pText;
+                        ui.scrollContent.appendChild(p);
+                    });
+                    ui.scrollViewer.scrollTop = 0;
+                    resolve();
+                };
+                reader.onerror = reject;
+                reader.readAsText(file);
+            });
+        }
+
+        // 2. DOCX Okuyucu
+        function readDocx(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    mammoth.convertToHtml({arrayBuffer: e.target.result})
+                        .then(function(result) {
+                            ui.scrollViewer.classList.remove('hidden');
+                            ui.scrollContent.innerHTML = result.value;
+                            ui.scrollViewer.scrollTop = 0;
+                            
+                            // DOCX içinden başlıkları bulup TOC yapalım (Basit)
+                            buildHtmlToc();
+                            resolve();
+                        }).catch(reject);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // Basit HTML başlıklarından İçindekiler oluşturma (DOCX için)
+        function buildHtmlToc() {
+            const headings = ui.scrollContent.querySelectorAll('h1, h2, h3');
+            if(headings.length > 0) {
+                ui.tocList.innerHTML = '';
+                headings.forEach((h, i) => {
+                    const id = `heading-${i}`;
+                    h.id = id;
+                    let li = document.createElement('li');
+                    let padding = h.tagName === 'H2' ? 'pl-4' : (h.tagName === 'H3' ? 'pl-8' : '');
+                    li.className = `border-b border-black/5 dark:border-white/5 last:border-0 ${padding}`;
+                    li.innerHTML = `<a href="#${id}" class="block py-3 hover:text-indigo-500 transition" onclick="scrollToElement('${id}'); return false;">${h.textContent}</a>`;
+                    ui.tocList.appendChild(li);
+                });
+            }
+        }
+        function scrollToElement(id) {
+            document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+            toggleSidebar();
+        }
+
+        // 3. EPUB Okuyucu
+        function readEpub(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    ui.epubViewer.classList.remove('hidden');
+                    ui.progressContainer.classList.remove('hidden');
+                    
+                    epubBook = ePub(e.target.result);
+                    epubRendition = epubBook.renderTo(ui.epubViewer, {
+                        width: "100%", height: "100%", spread: "none"
+                    });
+
+                    // EPUB Temalarını Kaydet
+                    epubRendition.themes.register("light", { "body": { "background": "transparent", "color": "#334155" }});
+                    epubRendition.themes.register("dark", { "body": { "background": "transparent", "color": "#cbd5e1" }});
+                    epubRendition.themes.register("sepia", { "body": { "background": "transparent", "color": "#5b4636" }});
+
+                    // İçindekiler (TOC) Yükleme
+                    epubBook.loaded.navigation.then(function(nav) {
+                        if(nav.length > 0) {
+                            ui.tocList.innerHTML = '';
+                            nav.forEach(function(navItem) {
+                                let li = document.createElement('li');
+                                li.className = 'border-b border-black/5 dark:border-white/5 last:border-0';
+                                let a = document.createElement('a');
+                                a.textContent = navItem.label;
+                                a.href = "#";
+                                a.className = "block py-3 hover:text-indigo-500 transition";
+                                a.onclick = (e) => { e.preventDefault(); epubRendition.display(navItem.href); toggleSidebar(); };
+                                li.appendChild(a);
+                                ui.tocList.appendChild(li);
+                            });
+                        }
+                    });
+
+                    // Sayfa/Lokasyon hesaplaması (Progress bar için arkaplanda çalışır)
+                    epubBook.ready.then(() => {
+                        return epubBook.locations.generate(1600); // Karakter bazlı hesaplama
+                    }).then((locations) => {
+                        epubLocationsGenerated = true;
+                        updateEpubProgress();
+                    });
+
+                    epubRendition.display().then(() => {
+                        resolve();
+                    }).catch(reject);
+
+                    epubRendition.on('relocated', function(location) {
+                        updateEpubProgress(location);
+                    });
+
+                    // Iframe içi klavye ve tıklama (tam ekran vs için)
+                    epubRendition.on('keyup', function(e) {
+                        if (e.keyCode == 37) prevPage();
+                        if (e.keyCode == 39) nextPage();
+                    });
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 4. PDF Okuyucu
+        function readPdf(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    ui.pdfViewer.classList.remove('hidden');
+                    ui.progressContainer.classList.remove('hidden');
+                    
+                    const typedarray = new Uint8Array(e.target.result);
+                    pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                        pdfDoc = pdf;
+                        pdfCurrentPageNum = 1;
+                        ui.totalPageDisplay.textContent = pdfDoc.numPages;
+                        
+                        // İçindekiler (Outline) al
+                        pdf.getOutline().then(outline => {
+                            if(outline && outline.length > 0) {
+                                ui.tocList.innerHTML = '';
+                                renderPdfToc(outline, ui.tocList);
+                            }
+                        });
+
+                        renderPdfPage(pdfCurrentPageNum);
+                        resolve();
+                    }).catch(reject);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function renderPdfToc(items, parentElement, level = 0) {
+            items.forEach(item => {
+                let li = document.createElement('li');
+                li.className = `border-b border-black/5 dark:border-white/5 last:border-0`;
+                li.style.paddingLeft = `${level * 1}rem`;
+                
+                let a = document.createElement('a');
+                a.textContent = item.title;
+                a.href = "#";
+                a.className = "block py-3 hover:text-indigo-500 transition truncate";
+                a.onclick = (e) => { 
+                    e.preventDefault(); 
+                    if(typeof item.dest === 'string') {
+                        pdfDoc.getDestination(item.dest).then(dest => {
+                            pdfDoc.getPageIndex(dest[0]).then(idx => {
+                                pdfCurrentPageNum = idx + 1;
+                                renderPdfPage(pdfCurrentPageNum);
+                                toggleSidebar();
+                            });
+                        });
+                    } else if (Array.isArray(item.dest)) {
+                        pdfDoc.getPageIndex(item.dest[0]).then(idx => {
+                            pdfCurrentPageNum = idx + 1;
+                            renderPdfPage(pdfCurrentPageNum);
+                            toggleSidebar();
+                        });
+                    }
+                };
+                li.appendChild(a);
+                parentElement.appendChild(li);
+                
+                if (item.items && item.items.length > 0) {
+                    renderPdfToc(item.items, parentElement, level + 1);
+                }
+            });
+        }
+
+        function renderPdfPage(num) {
+            if (!pdfDoc) return;
+            
+            pdfDoc.getPage(num).then(function(page) {
+                ui.pdfViewer.innerHTML = '';
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                ui.pdfViewer.appendChild(canvas);
+
+                const containerWidth = ui.pdfViewer.clientWidth - 32;
+                const unscaledViewport = page.getViewport({scale: 1});
+                const scale = Math.min(containerWidth / unscaledViewport.width, 1.5); // Max zoom 1.5
+                const viewport = page.getViewport({scale: scale});
+
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                page.render({ canvasContext: ctx, viewport: viewport });
+                
+                ui.currentPageDisplay.textContent = num;
+                ui.pdfViewer.scrollTop = 0;
+                
+                // Progress Bar Güncelle
+                const percent = (num / pdfDoc.numPages) * 100;
+                ui.progressBar.style.width = `${percent}%`;
+            });
+        }
+
+        // --- Navigasyon ve İlerleme Kontrolleri ---
+        function nextPage() {
+            if (state.format === 'epub' && epubRendition) epubRendition.next();
+            else if (state.format === 'pdf' && pdfDoc) {
+                if (pdfCurrentPageNum >= pdfDoc.numPages) return;
+                pdfCurrentPageNum++;
+                renderPdfPage(pdfCurrentPageNum);
+            }
+        }
+
+        function prevPage() {
+            if (state.format === 'epub' && epubRendition) epubRendition.prev();
+            else if (state.format === 'pdf' && pdfDoc) {
+                if (pdfCurrentPageNum <= 1) return;
+                pdfCurrentPageNum--;
+                renderPdfPage(pdfCurrentPageNum);
+            }
+        }
+
+        function updateEpubProgress(location) {
+            if(!epubBook || !epubRendition) return;
+            const loc = location || epubRendition.currentLocation();
+            if(loc && epubLocationsGenerated) {
+                const percentage = epubBook.locations.percentageFromCfi(loc.start.cfi);
+                const percentVal = Math.round(percentage * 100);
+                ui.progressBar.style.width = `${percentVal}%`;
+                
+                // Sayfa göstergesini yüzde olarak güncelle
+                ui.currentPageDisplay.textContent = `%${percentVal}`;
+                ui.totalPageDisplay.textContent = "%100";
+            } else {
+                ui.currentPageDisplay.textContent = "-";
+                ui.totalPageDisplay.textContent = "-";
+            }
+        }
+
+        function updateScrollProgress() {
+            if(state.format !== 'txt' && state.format !== 'docx') return;
+            const scrollPos = ui.scrollViewer.scrollTop;
+            const scrollHeight = ui.scrollViewer.scrollHeight - ui.scrollViewer.clientHeight;
+            const percent = scrollHeight > 0 ? (scrollPos / scrollHeight) * 100 : 0;
+            ui.progressBar.style.width = `${percent}%`;
+        }
+
+        // --- Olay Dinleyicileri (Event Listeners) ---
+        
+        // Klavye Yön Tuşları
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'ArrowRight') nextPage();
+            if (e.key === 'ArrowLeft') prevPage();
+        });
+
+        // Sürükle Bırak Desteği
+        document.body.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.body.classList.add('ring-4', 'ring-indigo-500', 'ring-inset');
+        });
+        document.body.addEventListener('dragleave', () => {
+            document.body.classList.remove('ring-4', 'ring-indigo-500', 'ring-inset');
+        });
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            document.body.classList.remove('ring-4', 'ring-indigo-500', 'ring-inset');
+            if (e.dataTransfer.files.length) {
+                const fileInput = document.getElementById('file-upload');
+                fileInput.files = e.dataTransfer.files;
+                const event = new Event('change');
+                fileInput.dispatchEvent(event);
+            }
+        });
+
+        // Pencere Boyutu Değişimi
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (state.format === 'pdf' && pdfDoc) renderPdfPage(pdfCurrentPageNum);
+                updateScrollProgress();
+            }, 300);
+        });
+
+        // Başlangıç Ayarlarını Uygula
+        updateSettings('theme', 'light');
+
+    </script>
+</body>
+</html>
+
+
